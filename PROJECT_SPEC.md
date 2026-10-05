@@ -92,6 +92,7 @@ draft --activate--> active --complete--> completed
 
 - 只有 `draft` 可以激活。
 - 只有 `active` 可以完成。
+- 完成时计划的最新判定必须存在、引用当前最新修订且结论为 `consistent`，否则分别返回 `assessment_missing`、`assessment_stale_revision`、`assessment_not_consistent`（均为 409 冲突）。
 - 激活后不能继续添加区域版本。
 - 激活和完成需要匹配当前版本。
 
@@ -160,9 +161,9 @@ ready --lease--> leased --report--> ready
 3. 存储层在锁内创建计划或版本，并原子替换状态快照。
 4. 返回带版本的新聚合。
 
-成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加。
+成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加；完成前必须存在引用当前修订且结论为 `consistent` 的最新判定。
 
-失败行为：重复序列号、非法名称、缺少版本、版本冲突或非法迁移不会修改状态。
+失败行为：重复序列号、非法名称、缺少版本、版本冲突或非法迁移不会修改状态。完成时缺少判定、判定不引用当前修订或结论非 `consistent` 也不会修改状态；重复完成已结束计划仍返回 `invalid_state` 冲突。门禁读取与状态迁移在同一锁内事务完成，判定结论和计划阈值必然来自同一计划版本。
 
 ### W2 节点领取租约
 

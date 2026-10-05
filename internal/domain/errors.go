@@ -19,6 +19,9 @@ const (
 	CodeLeaseNotClaimed     ErrorCode = "lease_not_claimed"
 	CodeNoProbes            ErrorCode = "no_probes"
 	CodeConflict            ErrorCode = "conflict"
+	CodeAssessmentMissing   ErrorCode = "assessment_missing"
+	CodeAssessmentStale     ErrorCode = "assessment_stale_revision"
+	CodeAssessmentNotReady  ErrorCode = "assessment_not_consistent"
 	CodeStorageFailure      ErrorCode = "storage_failure"
 	CodeInternal            ErrorCode = "internal_error"
 )

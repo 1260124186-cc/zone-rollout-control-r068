@@ -40,6 +40,45 @@ func CompletePlan(plan *RolloutPlan, now time.Time) error {
 	return nil
 }
 
+// EnsureCompletionAssessed is the completion gate that proves the rollout
+// reached the plan thresholds. All inputs must come from the same state
+// snapshot inside one store transaction, so a concurrent assessment can never
+// be checked against a different plan version.
+func EnsureCompletionAssessed(
+	plan RolloutPlan,
+	latest *RolloutAssessment,
+	revision *ZoneRevision,
+) error {
+	if latest == nil {
+		return NewError(CodeAssessmentMissing, "plan requires an assessment before completion", map[string]any{
+			"plan_id": plan.ID,
+		})
+	}
+	expectedRevisionID := plan.LatestRevisionID
+	if latest.RevisionID != expectedRevisionID {
+		return NewError(CodeAssessmentStale, "latest assessment does not cover the current revision", map[string]any{
+			"plan_id":             plan.ID,
+			"assessment_id":       latest.ID,
+			"assessment_revision": latest.RevisionID,
+			"current_revision":    expectedRevisionID,
+		})
+	}
+	if revision == nil {
+		return NewError(CodeStorageFailure, "plan references a missing revision", map[string]any{
+			"revision_id": expectedRevisionID,
+		})
+	}
+	if latest.Verdict != VerdictConsistent {
+		return NewError(CodeAssessmentNotReady, "latest assessment verdict is not consistent", map[string]any{
+			"plan_id":       plan.ID,
+			"assessment_id": latest.ID,
+			"verdict":       latest.Verdict,
+			"reasons":       latest.Reasons,
+		})
+	}
+	return nil
+}
+
 func LeaseFingerprint(planID string, input LeaseInput) string {
 	payload := fmt.Sprintf(
 		"%s|%s|%s|%d|%d",

@@ -153,13 +153,46 @@ func (s *Service) Complete(
 		if current.Version != expectedVersion {
 			return versionConflict(planID, expectedVersion, current.Version)
 		}
+		if current.State != domain.PlanActive {
+			return domain.InvalidState("plan can be completed only from active", map[string]any{
+				"plan_id": planID,
+				"state":   current.State,
+			})
+		}
+		// The gate reads the plan, its latest assessment and the referenced
+		// revision from this single snapshot, so the verdict and the plan
+		// thresholds always belong to the same plan version under the lock.
+		var latest *domain.RolloutAssessment
+		if current.LatestAssessmentID != "" {
+			found, exists := state.Assessments[current.LatestAssessmentID]
+			if !exists {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing assessment", map[string]any{
+					"assessment_id": current.LatestAssessmentID,
+				})
+			}
+			latest = &found
+		}
+		var revision *domain.ZoneRevision
+		if current.LatestRevisionID != "" {
+			found, exists := state.Revisions[current.LatestRevisionID]
+			if !exists {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing revision", map[string]any{
+					"revision_id": current.LatestRevisionID,
+				})
+			}
+			revision = &found
+		}
+		if err := domain.EnsureCompletionAssessed(current, latest, revision); err != nil {
+			return err
+		}
 		now := s.clock.Now().UTC()
 		if err := domain.CompletePlan(&current, now); err != nil {
 			return err
 		}
 		state.Plans[planID] = current
 		store.AddAudit(state, s.ids, "plan", planID, "completed", now, map[string]any{
-			"version": current.Version,
+			"version":       current.Version,
+			"assessment_id": current.LatestAssessmentID,
 		})
 		plan = current
 		return nil

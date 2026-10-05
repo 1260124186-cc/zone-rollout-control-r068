@@ -182,6 +182,7 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
 ## 状态及失败行为
 
 - 计划按 `draft -> active -> completed` 单向迁移，激活和完成需要匹配版本。
+- 完成活动计划前，最新一致性判定必须存在、引用当前最新区域修订且结论为 `consistent`；否则分别返回 `assessment_missing`、`assessment_stale_revision`、`assessment_not_consistent`（HTTP 409）。重复完成已结束计划仍返回 `invalid_state`。判定和计划阈值在同一锁内事务读取，保证来自同一计划版本。
 - 区域版本只在计划草稿状态可追加，序列号严格递增且内容不可变。
 - A、AAAA、CNAME 条目在写入前规范化并稳定排序，重复条目直接拒绝。
 - 节点按 `ready -> leased -> ready` 变化，隔离节点不会被选中。
