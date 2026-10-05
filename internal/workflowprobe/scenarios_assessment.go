@@ -88,5 +88,13 @@ func runConsistencyAssessment() error {
 	if review.Verdict != domain.VerdictReviewRequired {
 		return ensure(false, "mismatched serial did not require review")
 	}
-	return nil
+
+	// A plan whose latest assessment requires review cannot complete.
+	if err := harness.call(http.MethodGet, "/v1/plans/"+reviewPlan.ID, nil, &reviewPlan); err != nil {
+		return err
+	}
+	err = harness.call(http.MethodPatch, "/v1/plans/"+reviewPlan.ID+"/complete", map[string]any{
+		"expected_version": reviewPlan.Version,
+	}, nil)
+	return expectFailure(err, http.StatusConflict, string(domain.CodeAssessmentNotConsistent))
 }

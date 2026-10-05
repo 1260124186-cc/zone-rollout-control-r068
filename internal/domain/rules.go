@@ -27,11 +27,38 @@ func ActivatePlan(plan *RolloutPlan, now time.Time) error {
 	return nil
 }
 
-func CompletePlan(plan *RolloutPlan, now time.Time) error {
+// CompletePlan moves an active plan to completed. The transition is gated on
+// the plan's latest assessment so a rollout can only finish after proving it
+// met its thresholds: the assessment must exist, must reference the plan's
+// current revision, and must have reached a consistent verdict. Each gate
+// failure maps to a distinct error code. The assessment must be read in the
+// same transaction as the plan version check so concurrent updates cannot mix
+// a verdict from one plan version with thresholds from another.
+func CompletePlan(plan *RolloutPlan, assessment *RolloutAssessment, now time.Time) error {
 	if plan.State != PlanActive {
 		return InvalidState("plan can be completed only from active", map[string]any{
 			"plan_id": plan.ID,
 			"state":   plan.State,
+		})
+	}
+	if assessment == nil {
+		return NewError(CodeAssessmentRequired, "plan needs a latest assessment before completion", map[string]any{
+			"plan_id": plan.ID,
+		})
+	}
+	if assessment.RevisionID != plan.LatestRevisionID {
+		return NewError(CodeAssessmentStale, "latest assessment does not reference the current revision", map[string]any{
+			"plan_id":           plan.ID,
+			"assessment_id":     assessment.ID,
+			"revision_id":       plan.LatestRevisionID,
+			"assessed_revision": assessment.RevisionID,
+		})
+	}
+	if assessment.Verdict != VerdictConsistent {
+		return NewError(CodeAssessmentNotConsistent, "latest assessment did not reach a consistent verdict", map[string]any{
+			"plan_id":       plan.ID,
+			"assessment_id": assessment.ID,
+			"verdict":       assessment.Verdict,
 		})
 	}
 	plan.State = PlanCompleted

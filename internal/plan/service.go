@@ -153,13 +153,27 @@ func (s *Service) Complete(
 		if current.Version != expectedVersion {
 			return versionConflict(planID, expectedVersion, current.Version)
 		}
+		// Resolve the latest assessment inside this transaction so the
+		// completion gate and the version check always observe the same plan
+		// snapshot, even when an assessment is being recorded concurrently.
+		var assessment *domain.RolloutAssessment
+		if current.LatestAssessmentID != "" {
+			found, ok := state.Assessments[current.LatestAssessmentID]
+			if !ok {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing assessment", map[string]any{
+					"assessment_id": current.LatestAssessmentID,
+				})
+			}
+			assessment = &found
+		}
 		now := s.clock.Now().UTC()
-		if err := domain.CompletePlan(&current, now); err != nil {
+		if err := domain.CompletePlan(&current, assessment, now); err != nil {
 			return err
 		}
 		state.Plans[planID] = current
 		store.AddAudit(state, s.ids, "plan", planID, "completed", now, map[string]any{
-			"version": current.Version,
+			"version":       current.Version,
+			"assessment_id": current.LatestAssessmentID,
 		})
 		plan = current
 		return nil
